@@ -94,32 +94,58 @@ static void uv_poll(int block) {
   ULONG_PTR key;
   OVERLAPPED* overlapped;
   uv_req_t* req;
-
+  OVERLAPPED_ENTRY overlappeds[64];
+  ULONG count;
+  int i;
+  
   if (block) {
     timeout = uv_get_poll_timeout();
   } else {
     timeout = 0;
   }
 
-  success = GetQueuedCompletionStatus(LOOP->iocp,
-                                      &bytes,
-                                      &key,
-                                      &overlapped,
-                                      timeout);
-
-  if (overlapped) {
-    /* Package was dequeued */
-    req = uv_overlapped_to_req(overlapped);
-
-    if (!success) {
-      req->error = uv_new_sys_error(GetLastError());
+  if (pGetQueuedCompletionStatusEx) {
+    success = pGetQueuedCompletionStatusEx(LOOP->iocp,
+                                           overlappeds,
+                                           COUNTOF(overlappeds),
+                                           &count,
+                                           timeout,
+                                           FALSE);
+    if (success) {
+      for (i = 0; i < count; i++) {
+        /* Package was dequeued */
+        req = uv_overlapped_to_req(overlappeds[i].lpOverlapped);
+        if (overlappeds[i].lpOverlapped->Internal != STATUS_SUCCESS) {
+          req->error = uv_new_sys_error(pRtlNtStatusToDosError(
+            overlappeds[i].lpOverlapped->Internal));
+        }
+        uv_insert_pending_req(req);
+      }
+    } else if (GetLastError() != WAIT_TIMEOUT) {
+      /* Serious error */
+      uv_fatal_error(GetLastError(), "GetQueuedCompletionStatusEx");
     }
+  } else {
+    success = GetQueuedCompletionStatus(LOOP->iocp,
+                                        &bytes,
+                                        &key,
+                                        &overlapped,
+                                        timeout);
 
-    uv_insert_pending_req(req);
+    if (overlapped) {
+      /* Package was dequeued */
+      req = uv_overlapped_to_req(overlapped);
 
-  } else if (GetLastError() != WAIT_TIMEOUT) {
-    /* Serious error */
-    uv_fatal_error(GetLastError(), "GetQueuedCompletionStatus");
+      if (!success) {
+        req->error = uv_new_sys_error(GetLastError());
+      }
+
+      uv_insert_pending_req(req);
+
+    } else if (GetLastError() != WAIT_TIMEOUT) {
+      /* Serious error */
+      uv_fatal_error(GetLastError(), "GetQueuedCompletionStatus");
+    }
   }
 }
 

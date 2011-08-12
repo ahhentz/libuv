@@ -27,6 +27,7 @@
 
 #include "tree.h"
 #include "ntdll.h"
+#include "kernel32.h"
 
 
 /*
@@ -243,6 +244,7 @@ void uv_winapi_init();
 
 extern sRtlNtStatusToDosError pRtlNtStatusToDosError;
 extern sNtQueryInformationFile pNtQueryInformationFile;
+extern sGetQueuedCompletionStatusEx pGetQueuedCompletionStatusEx;
 
 
 #endif /* UV_WIN_INTERNAL_H_ */
